@@ -17,9 +17,10 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 .top{position:sticky;top:0;z-index:5;background:var(--az);color:#fff;display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px}
-.logo{height:34px;background:#fff;border-radius:8px;padding:5px 8px}
+.logo{height:30px;background:#fff;border-radius:8px;padding:5px 8px}
 .tt{display:flex;flex-direction:column;min-width:0}
-.tt b{font-size:16px}.tt span{font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tt{flex:1}.gbtn{flex:0 0 auto;border:0;border-radius:10px;background:var(--na);color:#fff;font-weight:700;font-size:13px;padding:6px 10px;display:flex;flex-direction:column;align-items:center;line-height:1.15}.gbtn small{font-size:9.5px;font-weight:500;opacity:.9}.gbtn.ok{background:var(--ok)}
+.tt b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tt span{font-size:12px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 main{padding:14px 14px calc(90px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto}
 .tabs{position:fixed;bottom:0;left:0;right:0;z-index:5;background:#fff;border-top:1px solid var(--ln);display:flex;padding-bottom:env(safe-area-inset-bottom)}
 .tabs button{flex:1;border:0;background:none;padding:8px 0 7px;font-size:11px;color:var(--mu);display:flex;flex-direction:column;align-items:center;gap:2px}
@@ -92,7 +93,7 @@ tbody tr{cursor:pointer}
 </style>
 </head>
 <body>
-<header class="top"><img src="logo.jpg" class="logo" alt="Soteco"><div class="tt"><b>Equipos en alquiler</b><span id="hObra"></span></div></header>
+<header class="top"><img src="logo.jpg" class="logo" alt="Soteco"><div class="tt"><b>Equipos alquiler</b><span id="hObra"></span></div><button class="gbtn" onclick="guardarYa()"><span>💾 Guardar</span><small id="hSave"></small></button></header>
 <main id="view"></main>
 <nav class="tabs">
   <button data-v="inicio"><i>🏠</i>Inicio</button>
@@ -131,7 +132,17 @@ function enObra(e,f){ return e.ingreso && e.ingreso<=f && (!e.salida || e.salida
 function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); if(s && s.equipos) return s; }catch(e){} return {cfg:{obra:'',resp:'',whats:''}, equipos:[], reg:{}, cortes:[]}; }
 let S = load();
 function ivaPct(){ return S.cfg.iva==null || S.cfg.iva==='' ? 19 : num(S.cfg.iva); }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('⚠️ No se pudo guardar'); } }
+function save(){ try{ S.lastSave = Date.now(); localStorage.setItem(KEY, JSON.stringify(S)); horaSave(); return true; }catch(e){ toast('⚠️ No se pudo guardar'); return false; } }
+function horaSave(){ const el = document.getElementById('hSave'); if(!el) return; if(!S.lastSave){ el.textContent = ''; return; } const d = new Date(S.lastSave); el.textContent = (ymd(d)===hoy() ? '' : fmtD(ymd(d)).slice(0,5)+' ')+pad(d.getHours())+':'+pad(d.getMinutes()); }
+async function guardarYa(){
+  document.activeElement && document.activeElement.blur && document.activeElement.blur();
+  if(!save()) return;
+  let ok = false; try{ ok = localStorage.getItem(KEY) === JSON.stringify(S); }catch(e){}
+  try{ if(navigator.storage && navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+  const b = document.querySelector('.gbtn');
+  if(ok){ b.classList.add('ok'); setTimeout(() => b.classList.remove('ok'), 1500); toast('✅ Información guardada y verificada'); }
+  else toast('⚠️ No se pudo verificar el guardado. Haga un respaldo en Más.');
+}
 function toast(t){ const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(()=>el.classList.remove('on'), 1800); }
 function openM(h){ document.getElementById('sheet').innerHTML = h; document.getElementById('modal').classList.remove('hidden'); }
 function closeM(){ document.getElementById('modal').classList.add('hidden'); }
@@ -571,7 +582,8 @@ function ejemplo(){
   save(); go('inicio'); toast('Datos de ejemplo cargados');
 }
 
-go('inicio');
+go('inicio'); horaSave();
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
