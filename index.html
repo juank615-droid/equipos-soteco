@@ -63,6 +63,17 @@ tfoot td{font-weight:700;color:var(--az);border-bottom:0;font-size:15px}
 .mx td:first-child,.mx th:first-child{text-align:left;min-width:110px;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:#fff}
 .lt{display:inline-block;width:20px;height:20px;line-height:20px;border-radius:5px;color:#fff;font-weight:700;font-size:11px}
 .lt.T{background:var(--ok)}.lt.S{background:var(--sb)}.lt.V{background:var(--va)}.lt.N{background:var(--nl)}.lt.X{background:#fff;color:var(--va);border:1.5px dashed var(--va);line-height:17px}
+.dg{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;margin:12px 0 8px}
+.dc{height:54px;border-radius:10px;border:1.5px solid var(--ln);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation;cursor:pointer;position:relative}
+.dc small{font-size:9.5px;color:var(--mu)}.dc b{font-size:15px}
+.dc.T{background:var(--ok);border-color:var(--ok)}.dc.S{background:var(--sb);border-color:var(--sb)}.dc.V{background:var(--va);border-color:var(--va)}.dc.N{background:var(--nl);border-color:var(--nl)}
+.dc.T *,.dc.S *,.dc.V *,.dc.N *{color:#fff}
+.dc.pen{border:1.5px dashed var(--va)}.dc.pen small:last-child{color:var(--va);font-weight:700}
+.dc.fut{opacity:.45}.dc.off{background:#eef0f3;border-color:#eef0f3;opacity:.5}
+.dc.hoy{box-shadow:0 0 0 2.5px var(--na)}
+.dc.nt::after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.qs{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--mu);align-items:center}.qs b{color:var(--az);font-size:15px;white-space:nowrap}
+tbody tr{cursor:pointer}
 .warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:10px}
 .chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:10px}
 .chips button{border:1px solid var(--ln);background:#fff;border-radius:20px;padding:6px 12px;font-size:13px;white-space:nowrap;color:var(--tx)}
@@ -85,7 +96,7 @@ tfoot td{font-weight:700;color:var(--az);border-bottom:0;font-size:15px}
 <main id="view"></main>
 <nav class="tabs">
   <button data-v="inicio"><i>🏠</i>Inicio</button>
-  <button data-v="dia"><i>📝</i>Registro</button>
+  <button data-v="quin"><i>📅</i>Quincena</button>
   <button data-v="equipos"><i>🚜</i>Equipos</button>
   <button data-v="corte"><i>🧾</i>Corte</button>
   <button data-v="mas"><i>⚙️</i>Más</button>
@@ -133,9 +144,9 @@ function calc(e, desde, hasta){
   for(const f of rango(desde,hasta)){
     if(!enObra(e,f)){ r.det[f]=''; continue; }
     const x = (S.reg[f]||{})[e.id];
-    if(!x && f>=h0){ r.det[f]='·'; continue; }
+    if(!(x && x.e) && f>=h0){ r.det[f]='·'; continue; }
     r.dias++;
-    const st = x ? x.e : 'X'; r[st]++; r.det[f]=st;
+    const st = x && x.e ? x.e : 'X'; r[st]++; r.det[f]=st;
     if(st==='T') r.hT += (e.unidad==='hora' && mh) ? Math.max(num(x.h), mh) : num(x.h);
     if(st==='S' && e.unidad==='hora') r.hS += mh*sb;
   }
@@ -143,26 +154,49 @@ function calc(e, desde, hasta){
   if(e.unidad==='hora'){ r.cant = r.hT + r.hS; r.u = 'h'; r.valor = r.cant*num(e.tarifa)*und; }
   else if(e.unidad==='mes'){ r.cant = r.dias - r.V; r.u = 'días cal.'; r.valor = r.cant*num(e.tarifa)/30*und; }
   else { r.cant = r.T + r.S*sb; r.u = 'días'; r.valor = r.cant*num(e.tarifa)*und; }
+  r.alq = r.valor;
+  r.trans = (e.ingreso>=desde && e.ingreso<=hasta ? num(e.trIda) : 0) + (e.salida && e.salida>=desde && e.salida<=hasta ? num(e.trRet) : 0);
+  r.valor += r.trans;
   return r;
 }
 
 // ---------- navegación ----------
 let view = 'inicio', curDia = hoy(), curQ = quincena(hoy()), curProv = '', eqF = 'obra', eqQ = '';
-function go(v){ view = v; document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v===v)); render(); window.scrollTo(0,0); }
+function go(v){ view = v; document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v===(v==='dia'?'quin':v))); render(); window.scrollTo(0,0); }
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => go(b.dataset.v));
 function render(){
   document.getElementById('hObra').textContent = S.cfg.obra || 'Toque Más ⚙️ para configurar la obra';
-  ({inicio:vInicio, dia:vDia, equipos:vEquipos, corte:vCorte, mas:vMas})[view]();
+  ({inicio:vInicio, quin:vQuin, dia:vDia, equipos:vEquipos, corte:vCorte, mas:vMas})[view]();
 }
 const V = h => document.getElementById('view').innerHTML = h;
 
-// ---------- INICIO ----------
+// ---------- INICIO (resumen) ----------
+function diasEntre(a,b){ return Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00'))/864e5) + 1; }
+function proy(e,q){
+  // estimado de lo que falta de la quincena (días sin registrar desde hoy) como si trabajara
+  const und = num(e.unds)||1; let v = 0;
+  rango(q.desde,q.hasta).forEach(f => {
+    if(f<hoy() || !enObra(e,f) || ((S.reg[f]||{})[e.id]||{}).e) return;
+    v += e.unidad==='hora' ? (num(e.minH)||8)*num(e.tarifa)*und : e.unidad==='mes' ? num(e.tarifa)/30*und : num(e.tarifa)*und;
+  });
+  return v;
+}
+function alertas(){
+  const out = [], h0 = hoy();
+  S.equipos.filter(e => enObra(e,h0)).forEach(e => {
+    const nm = esc(e.codigo||e.nombre);
+    ['S','V'].forEach(k => {
+      let f = (S.reg[h0]||{})[e.id] ? h0 : addD(h0,-1), n = 0;
+      while(enObra(e,f) && ((S.reg[f]||{})[e.id]||{}).e===k){ n++; f = addD(f,-1); }
+      if(k==='S' && n>=3) out.push('⏸ <b>'+nm+'</b> lleva '+n+' días en standby: evalúe devolverlo para no pagar alquiler sin uso.');
+      if(k==='V' && n>=2) out.push('🔧 <b>'+nm+'</b> lleva '+n+' días varado: exija reparación o reposición al proveedor.');
+    });
+    if(e.salidaProg && e.salidaProg<=addD(h0,3) && !e.salida) out.push('📦 <b>'+nm+'</b> tiene devolución programada el '+fmtD(e.salidaProg)+'.');
+  });
+  return out;
+}
 function vInicio(){
-  const h0 = hoy(), q = quincena(h0);
-  const act = S.equipos.filter(e => enObra(e,h0));
-  const regHoy = act.filter(e => (S.reg[h0]||{})[e.id]).length;
-  let tot = 0, pend = 0;
-  S.equipos.forEach(e => { const r = calc(e,q.desde,q.hasta); tot += r.valor; pend += r.X; });
+  const h0 = hoy(), q = quincena(h0), pct = ivaPct();
   if(!S.equipos.length){
     V(`<div class="card empty"><img src="icon-192.png" style="width:90px"><h2>Bienvenido</h2>
       <p>Registre los equipos alquilados de la obra, marque cada día si trabajaron y al final de cada quincena envíe el corte por WhatsApp.</p>
@@ -170,18 +204,110 @@ function vInicio(){
       <button class="btn gh full" onclick="ejemplo()">Cargar datos de ejemplo</button></div>`);
     return;
   }
-  V(`<h2>${dLargo(h0)}</h2>
+  const ds = rango(q.desde,q.hasta);
+  const filas = S.equipos.filter(e => ds.some(f => enObra(e,f))).map(e => ({e, r:calc(e,q.desde,q.hasta), p:proy(e,q)}));
+  const act = S.equipos.filter(e => enObra(e,h0));
+  const regHoy = act.filter(e => ((S.reg[h0]||{})[e.id]||{}).e).length;
+  const sub = filas.reduce((a,x) => a+x.r.valor, 0), iva = sub*pct/100;
+  const pr = (sub + filas.reduce((a,x) => a+x.p, 0))*(1+pct/100);
+  const pend = filas.reduce((a,x) => a+x.r.X, 0);
+  const provs = {}; filas.forEach(x => { const k = x.e.proveedor||'Sin proveedor'; provs[k] = provs[k]||{n:0,v:0}; provs[k].n++; provs[k].v += x.r.valor; });
+  const al = alertas();
+  V(`<h2>Resumen · quincena ${qLabel(q)}</h2>
   <div class="kpis">
-    <div class="kpi big"><small>Acumulado quincena ${qLabel(q)} · IVA incluido</small><b>${money(tot*(1+ivaPct()/100))}</b><small>Subtotal ${money(tot)} + IVA ${fmtN(ivaPct())}% ${money(tot*ivaPct()/100)}</small></div>
-    <div class="kpi"><small>Equipos en obra</small><b>${act.length}</b></div>
+    <div class="kpi big"><small>Acumulado a hoy · IVA incluido</small><b>${money(sub+iva)}</b><small>Subtotal ${money(sub)} + IVA ${fmtN(pct)}% ${money(iva)}</small></div>
+    <div class="kpi"><small>Proyección al cierre</small><b style="font-size:18px">${money(pr)}</b><small>IVA incluido</small></div>
     <div class="kpi"><small>Registrados hoy</small><b>${regHoy}/${act.length}</b><div class="bar"><i style="width:${act.length?regHoy/act.length*100:0}%"></i></div></div>
   </div>
-  ${pend ? `<div class="warn">⚠️ Hay <b>${pend}</b> día(s)-equipo sin registrar en esta quincena. Revíselos antes del corte.</div>` : ''}
-  <button class="btn na full" onclick="curDia=hoy();go('dia')">📝 Registrar uso de hoy</button><br><br>
-  <button class="btn full" onclick="curQ=quincena(hoy());go('corte')">🧾 Ver corte de la quincena</button>
-  <h3>Equipos en obra</h3>
-  ${act.map(e => { const x=(S.reg[h0]||{})[e.id]; return `<div class="card eq" onclick="formEq('${e.id}')"><div><div class="c">${esc(e.codigo)}</div><div class="n">${esc(e.nombre)}${num(e.unds)>1?' ×'+e.unds:''}</div><div class="mu">${esc(e.proveedor)} · ${money(e.tarifa)} ${UNI[e.unidad].toLowerCase()}</div></div>${x?`<span class="lt ${x.e}">${x.e}</span>`:'<span class="pill off">Sin registro</span>'}</div>`; }).join('') || '<div class="mu">No hay equipos en obra hoy.</div>'}`);
+  ${pend ? `<div class="warn">⚠️ Hay <b>${pend}</b> día(s)-equipo sin registrar en esta quincena.</div>` : ''}
+  ${al.map(a => `<div class="warn">${a}</div>`).join('')}
+  <div class="row" style="margin-bottom:12px"><button class="btn na" onclick="curQ=quincena(hoy());go('quin')">📅 Registrar uso</button><button class="btn" onclick="curQ=quincena(hoy());go('corte')">🧾 Corte</button></div>
+  <div class="card"><div class="mu" style="margin-bottom:4px">Equipos en la quincena · precios sin IVA</div>
+  <table><thead><tr><th>Equipo / tarifa</th><th>T·S·V</th><th>Valor</th></tr></thead><tbody>
+  ${filas.map(x => `<tr onclick="curQ=quincena(hoy());go('quin')"><td><b>${esc(x.e.codigo||'')}</b> ${esc(x.e.nombre)}${num(x.e.unds)>1?' ×'+x.e.unds:''}<br><span class="mu">${money(x.e.tarifa)} ${UNI[x.e.unidad].toLowerCase()} · ${esc(x.e.proveedor||'')}</span>${enObra(x.e,h0)?'':'<br><span class="pill off">Devuelto</span>'}</td>
+    <td><span style="color:var(--ok)">${x.r.T}</span>·<span style="color:var(--sb)">${x.r.S}</span>·<span style="color:var(--va)">${x.r.V}</span><br><span class="mu">${fmtN(x.r.cant)} ${x.r.u}</span></td><td><b>${money(x.r.valor)}</b>${x.r.trans?'<br><span class="mu">incl. transp.</span>':''}</td></tr>`).join('')}
+  </tbody><tfoot><tr><td colspan="2" style="font-weight:400;font-size:13px">Subtotal</td><td style="font-weight:400;font-size:13px">${money(sub)}</td></tr>
+  <tr><td colspan="2" style="font-weight:400;font-size:13px">IVA ${fmtN(pct)}%</td><td style="font-weight:400;font-size:13px">${money(iva)}</td></tr>
+  <tr><td colspan="2">TOTAL</td><td>${money(sub+iva)}</td></tr></tfoot></table></div>
+  <h3>Por proveedor</h3><div class="card"><table><tbody>
+  ${Object.keys(provs).sort().map(k => `<tr onclick="curProv='${esc(k==='Sin proveedor'?'':k)}';curQ=quincena(hoy());go('corte')"><td><b>${esc(k)}</b><br><span class="mu">${provs[k].n} equipo(s)</span></td><td><b>${money(provs[k].v*(1+pct/100))}</b><br><span class="mu">IVA incl.</span></td></tr>`).join('')}
+  </tbody></table></div>`);
 }
+
+// ---------- QUINCENA (registro con un toque) ----------
+function vQuin(){
+  const q = curQ, ds = rango(q.desde,q.hasta);
+  const L = S.equipos.filter(e => ds.some(f => enObra(e,f)));
+  V(`<div class="dnav"><button onclick="curQ=quincena(addD(curQ.desde,-1));render()">◀</button>
+    <div class="d"><b>Quincena ${qLabel(q)}</b><span class="mu">Toque un día para registrar</span></div>
+    <button onclick="curQ=quincena(addD(curQ.hasta,1));render()">▶</button></div>
+  <div class="legend"><span>Cada toque cambia:</span><span><i class="lt T">T</i>Trabajó</span>→<span><i class="lt S">S</i>Standby</span>→<span><i class="lt V">V</i>Varado</span>→<span><i class="lt N">N</i>No laboró</span>→<span>vacío</span></div>
+  <p class="mu" style="margin:2px 0 10px">Mantenga presionado un día para anotar horas, frente u operador.</p>
+  ${L.length && hoy()>=q.desde && hoy()<=q.hasta ? `<button class="btn sm gh full" style="margin-bottom:10px" onclick="curDia=hoy();todos('T')">✅ Hoy: marcar “Trabajó” a los que faltan</button>` : ''}
+  ${L.map(cardQ).join('') || '<div class="card empty">No hay equipos en obra en esta quincena.<br><br><button class="btn na" onclick="formEq()">+ Agregar equipo</button></div>'}
+  <button class="btn gh full" onclick="curDia=hoy();go('dia')">📋 Ver registro por día (lista)</button>`);
+}
+function cardQ(e){
+  const q = curQ, r = calc(e,q.desde,q.hasta), h0 = hoy();
+  const fin = e.salida && e.salida<h0 ? e.salida : h0;
+  const nd = e.ingreso<=fin ? diasEntre(e.ingreso, fin) : 0;
+  const acum = e.ingreso<=fin ? calc(e, e.ingreso, fin).valor : 0;
+  const dev = e.salida && e.salida<h0;
+  return `<div class="card" id="q_${e.id}">
+    <div class="eq" onclick="formEq('${e.id}')"><div><div class="c">${esc(e.codigo)}</div><div class="n">${esc(e.nombre)}${num(e.unds)>1?' ×'+e.unds:''}</div>
+    <div class="mu">${esc(e.proveedor)||'Sin proveedor'} · ${money(e.tarifa)} ${UNI[e.unidad].toLowerCase()}${e.unidad==='hora'&&num(e.minH)?' (mín. '+e.minH+' h/día)':''} · standby ${fmtN(num(e.standby))}%</div>
+    <div class="mu">En obra desde ${fmtD(e.ingreso)} (${nd} días)${e.salida?' · salida '+fmtD(e.salida):''} · acumulado ${money(acum)}</div></div>
+    <span class="pill ${dev?'off':'ok'}">${dev?'Devuelto':'En obra'}</span></div>
+    <div class="dg">${rango(q.desde,q.hasta).map(f => chip(e,f)).join('')}</div>
+    <div class="qs"><span>T ${r.T} · S ${r.S} · V ${r.V} · N ${r.N}${r.X?' · <b style="color:var(--va)">? '+r.X+'</b>':''} · ${fmtN(r.cant)} ${r.u}</span><b>${money(r.valor)}</b></div>
+  </div>`;
+}
+function chip(e,f){
+  const x = (S.reg[f]||{})[e.id]||{}, d = new Date(f+'T12:00:00'), h0 = hoy();
+  let c = 'dc';
+  if(!enObra(e,f)) c += ' off'; else if(x.e) c += ' '+x.e; else if(f>h0) c += ' fut'; else c += ' pen';
+  if(f===h0) c += ' hoy';
+  if(x.obs) c += ' nt';
+  const lb = x.e ? (e.unidad==='hora' && x.e==='T' && x.h ? x.h+'h' : x.e) : (enObra(e,f) && f<=h0 ? '?' : '');
+  return `<div class="${c}" onpointerdown="pd('${e.id}','${f}')" onpointerup="pu('${e.id}','${f}')" onpointercancel="pc()" onpointerleave="pc()" oncontextmenu="return false"><small>${DIAS[d.getDay()]}</small><b>${d.getDate()}</b><small>${lb}</small></div>`;
+}
+let lp = null;
+function pd(id,f){ clearTimeout(lp); lp = setTimeout(() => { lp = null; if(navigator.vibrate) navigator.vibrate(25); detalle(id,f); }, 550); }
+function pc(){ clearTimeout(lp); lp = null; }
+function pu(id,f){ if(lp){ clearTimeout(lp); lp = null; ciclo(id,f); } }
+function okDia(e,f){
+  if(!enObra(e,f)){ toast('El equipo no estaba en obra ese día'); return false; }
+  if(f>hoy()){ toast('No se registran días futuros'); return false; }
+  return true;
+}
+function ciclo(id,f){
+  const e = S.equipos.find(q => q.id===id); if(!okDia(e,f)) return;
+  const x = regDe(f,id), ord = ['T','S','V','N'], nx = ord[ord.indexOf(x.e)+1];
+  if(x.e===undefined || !x.e){ x.e = 'T'; } else if(nx){ x.e = nx; } else { delete x.e; }
+  if(x.e==='T' && e.unidad==='hora' && !x.h && num(e.minH)) x.h = String(e.minH);
+  if(!x.e) delete x.h;
+  limpia(f,id); save(); refreshCard(id);
+  if(navigator.vibrate) navigator.vibrate(8);
+}
+function refreshCard(id){ const el = document.getElementById('q_'+id); if(el) el.outerHTML = cardQ(S.equipos.find(q => q.id===id)); else render(); }
+function detalle(id,f){
+  const e = S.equipos.find(q => q.id===id); if(!okDia(e,f)) return;
+  const x = (S.reg[f]||{})[id]||{};
+  openM(`<div class="hd"><h2 style="margin:0;font-size:16px">${esc(e.codigo||'')} ${esc(e.nombre)}<br><span class="mu" style="text-transform:capitalize">${dLargo(f)}</span></h2><button class="x" onclick="closeM()">✕</button></div>
+  <div class="seg">${Object.keys(EST).map(k => `<button class="${k} ${x.e===k?'on':''}" onclick="detEst(this,'${k}')">${EST[k].n}</button>`).join('')}</div>
+  <input type="hidden" id="d_e" value="${x.e||''}">
+  <label>${e.unidad==='hora'?'Horas trabajadas':'Horas (opcional)'}</label><input id="d_h" inputmode="decimal" value="${esc(x.h||'')}">
+  <label>Frente / operador / nota</label><input id="d_obs" value="${esc(x.obs||'')}">
+  <br><br><button class="btn na full" onclick="guardaDet('${id}','${f}')">Guardar</button><br><br>
+  <button class="btn rd full" onclick="borraDet('${id}','${f}')">Borrar registro del día</button>`);
+}
+function detEst(b,k){ document.querySelectorAll('#sheet .seg button').forEach(z => z.classList.toggle('on', z===b)); document.getElementById('d_e').value = k; }
+function guardaDet(id,f){
+  const st = document.getElementById('d_e').value, h = document.getElementById('d_h').value.trim(), o = document.getElementById('d_obs').value.trim();
+  const x = regDe(f,id); x.h = h; x.obs = o; if(st) x.e = st; else if(h) x.e = 'T'; else delete x.e;
+  limpia(f,id); save(); closeM(); refreshCard(id); toast('Guardado');
+}
+function borraDet(id,f){ if(S.reg[f]) delete S.reg[f][id]; save(); closeM(); refreshCard(id); toast('Registro borrado'); }
 
 // ---------- REGISTRO DIARIO ----------
 function vDia(){
@@ -245,14 +371,17 @@ function formEq(id){
   <div><label>% cobro en Standby</label><input id="f_standby" inputmode="decimal" value="${esc(e.standby==null?100:e.standby)}"></div></div>
   <div class="grid2"><div><label>Fecha de ingreso a obra</label><input type="date" id="f_ingreso" value="${esc(e.ingreso)}"></div>
   <div><label>Fecha de salida (devolución)</label><input type="date" id="f_salida" value="${esc(e.salida)}"></div></div>
+  <div class="grid2"><div><label>Transporte de ingreso ($)</label><input id="f_trIda" inputmode="decimal" value="${esc(e.trIda||'')}" placeholder="0"></div>
+  <div><label>Transporte de retiro ($)</label><input id="f_trRet" inputmode="decimal" value="${esc(e.trRet||'')}" placeholder="0"></div></div>
+  <label>Devolución programada (opcional)</label><input type="date" id="f_salidaProg" value="${esc(e.salidaProg)}">
   <label>Observaciones</label><input id="f_obs" value="${esc(e.obs)}">
-  <p class="mu">Por mes: se cobra tarifa/30 por día calendario en obra, menos los días varado. Varado y No laboró no se cobran.</p>
+  <p class="mu">Por mes: se cobra tarifa/30 por día calendario en obra, menos los días varado. Varado y No laboró no se cobran. El transporte se cobra en la quincena del ingreso y en la del retiro.</p>
   <button class="btn na full" onclick="guardaEq('${id||''}')">Guardar</button>
   ${id ? `<br><br><div class="row"><button class="btn gh" onclick="devolver('${id}')">📦 Devolver hoy</button><button class="btn rd" onclick="borraEq('${id}')">🗑 Eliminar</button></div>` : ''}`);
 }
 function guardaEq(id){
   const g = k => document.getElementById('f_'+k).value.trim();
-  const d = {codigo:g('codigo'), nombre:g('nombre'), proveedor:g('proveedor'), tel:g('tel'), tarifa:num(g('tarifa')), unidad:g('unidad'), minH:num(g('minH')), standby:num(g('standby')), unds:num(g('unds'))||1, ingreso:g('ingreso'), salida:g('salida'), obs:g('obs')};
+  const d = {codigo:g('codigo'), nombre:g('nombre'), proveedor:g('proveedor'), tel:g('tel'), tarifa:num(g('tarifa')), unidad:g('unidad'), minH:num(g('minH')), standby:num(g('standby')), unds:num(g('unds'))||1, ingreso:g('ingreso'), salida:g('salida'), salidaProg:g('salidaProg'), trIda:num(g('trIda')), trRet:num(g('trRet')), obs:g('obs')};
   if(!d.nombre){ toast('Escriba el nombre del equipo'); return; }
   if(!d.ingreso){ toast('Indique la fecha de ingreso'); return; }
   if(d.salida && d.salida<d.ingreso){ toast('La salida es anterior al ingreso'); return; }
@@ -285,7 +414,7 @@ function vCorte(){
   ${d.pend ? `<div class="warn">⚠️ ${d.pend} día(s)-equipo sin registrar (marcados con <span class="lt X">?</span>). No se cobran hasta que se registren.</div>` : ''}
   <div class="card"><div class="mu">Periodo ${fmtD(d.q.desde)} al ${fmtD(d.q.hasta)}${d.prov?' · '+esc(d.prov):''}</div>
   <table><thead><tr><th>Equipo</th><th>T</th><th>S</th><th>V</th><th>Cobro</th><th>Valor</th></tr></thead><tbody>
-  ${d.filas.map(x => `<tr><td><b>${esc(x.e.codigo||'')}</b> ${esc(x.e.nombre)}${num(x.e.unds)>1?' ×'+x.e.unds:''}<br><span class="mu">${money(x.e.tarifa)} ${UNI[x.e.unidad].toLowerCase()}</span></td><td>${x.r.T}</td><td>${x.r.S}</td><td>${x.r.V}</td><td>${fmtN(x.r.cant)} ${x.r.u}</td><td><b>${money(x.r.valor)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="mu">Sin equipos en este periodo.</td></tr>'}
+  ${d.filas.map(x => `<tr><td><b>${esc(x.e.codigo||'')}</b> ${esc(x.e.nombre)}${num(x.e.unds)>1?' ×'+x.e.unds:''}<br><span class="mu">${money(x.e.tarifa)} ${UNI[x.e.unidad].toLowerCase()}${x.r.trans?' · transporte '+money(x.r.trans):''}</span></td><td>${x.r.T}</td><td>${x.r.S}</td><td>${x.r.V}</td><td>${fmtN(x.r.cant)} ${x.r.u}</td><td><b>${money(x.r.valor)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="mu">Sin equipos en este periodo.</td></tr>'}
   </tbody><tfoot><tr><td colspan="5" style="font-weight:400;font-size:13px">Subtotal</td><td style="font-weight:400;font-size:13px">${money(d.sub)}</td></tr>
   <tr><td colspan="5" style="font-weight:400;font-size:13px">IVA ${fmtN(d.pct)}%</td><td style="font-weight:400;font-size:13px">${money(d.iva)}</td></tr>
   <tr><td colspan="5">TOTAL</td><td>${money(d.total)}</td></tr></tfoot></table></div>
@@ -307,7 +436,8 @@ function textoCorte(d){
     const e = x.e, r = x.r, und = num(e.unds)>1 ? ' (×'+e.unds+')' : '';
     L.push((i+1)+'. *'+(e.codigo?e.codigo+' · ':'')+e.nombre+'*'+und);
     L.push('   Trabajó '+r.T+' · Standby '+r.S+' · Varado '+r.V+' · No laboró '+r.N+(r.X?' · Sin registro '+r.X:'')+(r.hT?' · '+fmtN(r.hT)+' h':''));
-    L.push('   '+fmtN(r.cant)+' '+r.u+' × '+money(e.tarifa)+(e.unidad==='mes'?'/mes':'')+' = '+money(r.valor));
+    L.push('   '+fmtN(r.cant)+' '+r.u+' × '+money(e.tarifa)+(e.unidad==='mes'?'/mes':'')+' = '+money(r.alq));
+    if(r.trans) L.push('   Transporte: '+money(r.trans));
   });
   L.push('', 'Subtotal: '+money(d.sub), 'IVA '+fmtN(d.pct)+'%: '+money(d.iva), '*TOTAL: '+money(d.total)+'*');
   if(d.pend) L.push('_Nota: '+d.pend+' día(s)-equipo sin registrar._');
@@ -347,7 +477,7 @@ async function compartirImg(){
   d.filas.forEach((f,i) => {
     if(i%2){ x.fillStyle = '#f4f6fa'; x.fillRect(P,y,W-2*P,rh); }
     T(fit((f.e.codigo?f.e.codigo+' · ':'')+f.e.nombre+(num(f.e.unds)>1?' ×'+f.e.unds:''),470,24,'600'), P+14, y+32, 24, '#1b2333', '600');
-    T(fit(money(f.e.tarifa)+' '+UNI[f.e.unidad].toLowerCase()+(f.e.proveedor?' · '+f.e.proveedor:''),470,19), P+14, y+60, 19, '#6b7385');
+    T(fit(money(f.e.tarifa)+' '+UNI[f.e.unidad].toLowerCase()+(f.r.trans?' · transp. '+money(f.r.trans):'')+(f.e.proveedor?' · '+f.e.proveedor:''),470,19), P+14, y+60, 19, '#6b7385');
     T(String(f.r.T),600,y+44,24,'#16a34a','700','center'); T(String(f.r.S),660,y+44,24,'#f59e0b','700','center'); T(String(f.r.V),720,y+44,24,'#dc2626','700','center');
     T(fmtN(f.r.cant)+' '+f.r.u,850,y+44,22,'#1b2333','400','right'); T(money(f.r.valor),W-P-14,y+44,24,'#14213d','700','right');
     y += rh;
