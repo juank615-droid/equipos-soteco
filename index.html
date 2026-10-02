@@ -132,15 +132,23 @@ function enObra(e,f){ return e.ingreso && e.ingreso<=f && (!e.salida || e.salida
 function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); if(s && s.equipos) return s; }catch(e){} return {cfg:{obra:'',resp:'',whats:''}, equipos:[], reg:{}, cortes:[]}; }
 let S = load();
 function ivaPct(){ return S.cfg.iva==null || S.cfg.iva==='' ? 19 : num(S.cfg.iva); }
-function save(){ try{ S.lastSave = Date.now(); localStorage.setItem(KEY, JSON.stringify(S)); horaSave(); return true; }catch(e){ toast('⚠️ No se pudo guardar'); return false; } }
-function horaSave(){ const el = document.getElementById('hSave'); if(!el) return; if(!S.lastSave){ el.textContent = ''; return; } const d = new Date(S.lastSave); el.textContent = (ymd(d)===hoy() ? '' : fmtD(ymd(d)).slice(0,5)+' ')+pad(d.getHours())+':'+pad(d.getMinutes()); }
+function save(){
+  if(syn().rol==='seguimiento'){ try{ S = JSON.parse(localStorage.getItem(KEY)); }catch(e){} toast('👁 Modo seguimiento: solo consulta'); setTimeout(render, 0); return false; }
+  try{ S.lastSave = Date.now(); localStorage.setItem(KEY, JSON.stringify(S)); horaSave(); programarEnvio(); return true; }catch(e){ toast('⚠️ No se pudo guardar'); return false; }
+}
+function horaSave(){ const el = document.getElementById('hSave'); if(!el) return;
+  const lb = document.querySelector('.gbtn span'); if(lb) lb.textContent = syn().rol==='seguimiento' ? '🔄 Actualizar' : '💾 Guardar';
+  if(!S.lastSave){ el.textContent = nubeIc; return; } const d = new Date(S.lastSave); el.textContent = (nubeIc?nubeIc+' ':'')+(ymd(d)===hoy() ? '' : fmtD(ymd(d)).slice(0,5)+' ')+pad(d.getHours())+':'+pad(d.getMinutes()); }
 async function guardarYa(){
   document.activeElement && document.activeElement.blur && document.activeElement.blur();
+  if(syn().rol==='seguimiento'){ await traerNube(false); return; }
   if(!save()) return;
   let ok = false; try{ ok = localStorage.getItem(KEY) === JSON.stringify(S); }catch(e){}
   try{ if(navigator.storage && navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
   const b = document.querySelector('.gbtn');
-  if(ok){ b.classList.add('ok'); setTimeout(() => b.classList.remove('ok'), 1500); toast('✅ Información guardada y verificada'); }
+  let nube = '';
+  if(ok && syn().url && syn().rol==='registro') nube = (await enviarNube()) ? ' y enviada a la nube ☁' : ' (sin conexión: se enviará después)';
+  if(ok){ b.classList.add('ok'); setTimeout(() => b.classList.remove('ok'), 1500); toast('✅ Información guardada'+(nube||' y verificada')); }
   else toast('⚠️ No se pudo verificar el guardado. Haga un respaldo en Más.');
 }
 function toast(t){ const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(()=>el.classList.remove('on'), 1800); }
@@ -532,6 +540,7 @@ function vMas(){
   <h3>Historial de cortes</h3>
   ${S.cortes.map(c => `<div class="card eq"><div><div class="n">${qLabel(c)}${c.prov?' · '+esc(c.prov):''}</div><div class="mu">Guardado ${fmtD(c.fecha)} · ${money(c.total)}</div></div>
     <div style="display:flex;gap:6px"><button class="btn wa sm" onclick="reenviar('${c.id}')">💬</button><button class="btn gh sm" onclick="verCorte('${c.id}')">Ver</button></div></div>`).join('') || '<div class="mu">Aún no hay cortes guardados.</div>'}
+  <h3>☁️ Enlace entre celulares</h3>${cardNube()}
   <h3>Respaldo de datos</h3><div class="card">
   <p class="mu" style="margin-top:0">Los datos viven solo en este teléfono. Haga un respaldo cada quincena y guárdelo en Drive o WhatsApp.</p>
   <div class="row"><button class="btn gh" onclick="exportar()">⬇️ Respaldo</button><button class="btn gh" onclick="document.getElementById('imp').click()">⬆️ Restaurar</button></div>
@@ -605,7 +614,99 @@ function ejemplo(){
   save(); go('inicio'); toast('Datos de ejemplo cargados');
 }
 
+// ---------- ENLACE ENTRE CELULARES (Google Sheets) ----------
+function syn(){ return (S.cfg && S.cfg.sync) || {}; }
+let pushT = null, pulling = false, nubeIc = '';
+function guardaLocal(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function datosNube(){ const c = JSON.parse(JSON.stringify(S)); if(c.cfg) delete c.cfg.sync; return c; }
+function estadoNube(ic){ nubeIc = ic; horaSave(); }
+function programarEnvio(){
+  const y = syn(); if(!y.url || y.rol!=='registro') return;
+  y.pend = true; guardaLocal(); estadoNube('⏳');
+  clearTimeout(pushT); pushT = setTimeout(enviarNube, 2500);
+}
+async function enviarNube(){
+  const y = syn(); if(!y.url) return false;
+  clearTimeout(pushT);
+  try{
+    const r = await fetch(y.url, {method:'POST', body:JSON.stringify({clave:y.clave, data:datosNube()})});
+    const j = await r.json(); if(!j.ok) throw new Error(j.error||'Error');
+    y.pend = false; y.last = Date.now(); y.err = ''; guardaLocal(); estadoNube('☁'); return true;
+  }catch(e){ y.err = String(e.message||e); guardaLocal(); estadoNube('⚠'); return false; }
+}
+async function traerNube(silencioso){
+  const y = syn(); if(!y.url) return false;
+  try{
+    estadoNube('⏳');
+    const r = await fetch(y.url+'?clave='+encodeURIComponent(y.clave)+'&t='+Date.now());
+    const j = await r.json(); if(!j.ok) throw new Error(j.error||'Error');
+    if(!j.data){ estadoNube('☁'); if(!silencioso) toast('La nube aún no tiene datos'); return false; }
+    const keep = y; S = j.data; S.cfg = S.cfg||{}; S.cfg.sync = keep; S.reg = S.reg||{}; S.cortes = S.cortes||[]; S.equipos = S.equipos||[];
+    keep.last = Date.now(); keep.err = ''; guardaLocal(); render(); estadoNube('☁');
+    if(!silencioso) toast('🔄 Actualizado con el celular de obra'); return true;
+  }catch(e){ y.err = String(e.message||e); guardaLocal(); estadoNube('⚠'); if(!silencioso) toast('⚠️ Sin conexión con la nube'); return false; }
+}
+function enlaceTexto(rol){
+  const y = syn(); const t = btoa(unescape(encodeURIComponent(JSON.stringify({u:y.url, c:y.clave, r:rol}))));
+  return location.origin+location.pathname+'#enlace='+encodeURIComponent(t);
+}
+function leerEnlace(txt){
+  const m = String(txt||'').match(/#enlace=([^\s]+)/); if(!m) return null;
+  try{ const o = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))); return o && o.u ? o : null; }catch(e){ return null; }
+}
+async function aplicarEnlace(o){
+  const nm = o.r==='registro' ? 'REGISTRO (este celular envía los datos de obra)' : 'SEGUIMIENTO (solo consulta lo que registra el celular de obra)';
+  if(!confirm('¿Enlazar este celular en modo '+nm+'?')) return;
+  S.cfg = S.cfg||{}; S.cfg.sync = {url:o.u, clave:o.c, rol:o.r}; guardaLocal(); closeM();
+  if(o.r==='seguimiento'){ await traerNube(false); }
+  else if(!S.equipos.length){ await traerNube(false); }
+  else if(confirm('Este celular tiene '+S.equipos.length+' equipo(s). ¿Subirlos ahora a la nube?')){ toast((await enviarNube()) ? '☁ Datos enviados a la nube' : '⚠️ No se pudo enviar'); }
+  render();
+}
+function pegarEnlace(){
+  openM(`<div class="hd"><h2 style="margin:0">Pegar enlace</h2><button class="x" onclick="closeM()">✕</button></div>
+  <p class="mu">Pegue el enlace de registro o de seguimiento que le enviaron por WhatsApp.</p>
+  <textarea id="txtEnl" rows="5"></textarea><br><br>
+  <button class="btn na full" onclick="const o=leerEnlace(document.getElementById('txtEnl').value); if(o) aplicarEnlace(o); else alert('El texto no contiene un enlace válido.')">Enlazar</button>`);
+}
+function configNube(){
+  const y = syn();
+  openM(`<div class="hd"><h2 style="margin:0">Configurar nube</h2><button class="x" onclick="closeM()">✕</button></div>
+  <label>URL de la aplicación web (Google Apps Script)</label><textarea id="n_url" rows="3">${esc(y.url||'')}</textarea>
+  <label>Clave</label><input id="n_clave" value="${esc(y.clave||'')}">
+  <label>Este celular</label><select id="n_rol"><option value="registro" ${y.rol!=='seguimiento'?'selected':''}>Registra (celular de obra)</option><option value="seguimiento" ${y.rol==='seguimiento'?'selected':''}>Solo seguimiento</option></select>
+  <br><br><button class="btn na full" onclick="aplicarEnlace({u:document.getElementById('n_url').value.trim(), c:document.getElementById('n_clave').value.trim(), r:document.getElementById('n_rol').value})">Guardar y enlazar</button>`);
+}
+function compartirEnlace(rol){
+  const t = (rol==='seguimiento' ? 'Seguimiento de equipos en alquiler' : 'Registro de equipos en alquiler')+(S.cfg.obra?' · '+S.cfg.obra:'')+
+    '\n1) Abra este enlace (Android: Chrome · iPhone: Safari).\n2) Si ya tiene la app instalada: copie el enlace y en la app use Más → Pegar enlace.\n\n'+enlaceTexto(rol);
+  window.open('https://wa.me/?text='+encodeURIComponent(t), '_blank');
+}
+function desenlazar(){ if(!confirm('¿Quitar el enlace con la nube en este celular? Los datos quedan en el celular.')) return; delete S.cfg.sync; guardaLocal(); estadoNube(''); render(); }
+function cardNube(){
+  const y = syn();
+  if(!y.url) return `<div class="card"><p class="mu" style="margin-top:0">Enlace el celular de obra con otros celulares (Android o iPhone) para hacer seguimiento en tiempo real.</p>
+    <div class="row"><button class="btn na" onclick="pegarEnlace()">🔗 Pegar enlace</button><button class="btn gh" onclick="configNube()">⚙️ Configurar</button></div></div>`;
+  const reg = y.rol==='registro';
+  return `<div class="card"><div class="eq"><div><div class="n">${reg?'📤 Celular de obra (registra)':'👁 Seguimiento (solo consulta)'}</div>
+    <div class="mu">${y.last?(reg?'Último envío ':'Última actualización ')+fmtD(ymd(new Date(y.last)))+' '+pad(new Date(y.last).getHours())+':'+pad(new Date(y.last).getMinutes()):'Sin sincronizar aún'}${y.pend?' · cambios pendientes por enviar':''}</div>
+    ${y.err?`<div class="mu" style="color:var(--va)">⚠️ ${esc(y.err)}</div>`:''}</div><span class="pill ${y.err?'off':'ok'}">${y.err?'Sin conexión':'Enlazado'}</span></div><br>
+    <div class="row">${reg?`<button class="btn" onclick="enviarNube().then(ok=>{toast(ok?'☁ Enviado':'⚠️ No se pudo enviar');render()})">⬆️ Enviar ahora</button>`:''}<button class="btn gh" onclick="traerNube(false)">⬇️ Actualizar</button></div><br>
+    ${reg?`<button class="btn wa full" onclick="compartirEnlace('seguimiento')">💬 Enviar enlace de seguimiento</button><br><br>`:''}
+    <div class="row"><button class="btn gh sm" onclick="configNube()">⚙️ Configurar</button><button class="btn rd sm" onclick="desenlazar()">Desenlazar</button></div></div>`;
+}
+
 go('inicio'); horaSave();
+(async () => {
+  const o = leerEnlace(location.hash);
+  if(o){ history.replaceState(null, '', location.pathname); await aplicarEnlace(o); return; }
+  const y = syn();
+  if(y.rol==='seguimiento') traerNube(true);
+  else if(y.url && y.pend) enviarNube();
+  else if(y.url) estadoNube('☁');
+})();
+document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible' && syn().rol==='seguimiento') traerNube(true); });
+window.addEventListener('online', () => { if(syn().pend) enviarNube(); });
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
