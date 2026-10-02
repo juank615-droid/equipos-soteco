@@ -119,6 +119,7 @@ function enObra(e,f){ return e.ingreso && e.ingreso<=f && (!e.salida || e.salida
 
 function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); if(s && s.equipos) return s; }catch(e){} return {cfg:{obra:'',resp:'',whats:''}, equipos:[], reg:{}, cortes:[]}; }
 let S = load();
+function ivaPct(){ return S.cfg.iva==null || S.cfg.iva==='' ? 19 : num(S.cfg.iva); }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('⚠️ No se pudo guardar'); } }
 function toast(t){ const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(()=>el.classList.remove('on'), 1800); }
 function openM(h){ document.getElementById('sheet').innerHTML = h; document.getElementById('modal').classList.remove('hidden'); }
@@ -171,7 +172,7 @@ function vInicio(){
   }
   V(`<h2>${dLargo(h0)}</h2>
   <div class="kpis">
-    <div class="kpi big"><small>Acumulado quincena ${qLabel(q)}</small><b>${money(tot)}</b></div>
+    <div class="kpi big"><small>Acumulado quincena ${qLabel(q)} · IVA incluido</small><b>${money(tot*(1+ivaPct()/100))}</b><small>Subtotal ${money(tot)} + IVA ${fmtN(ivaPct())}% ${money(tot*ivaPct()/100)}</small></div>
     <div class="kpi"><small>Equipos en obra</small><b>${act.length}</b></div>
     <div class="kpi"><small>Registrados hoy</small><b>${regHoy}/${act.length}</b><div class="bar"><i style="width:${act.length?regHoy/act.length*100:0}%"></i></div></div>
   </div>
@@ -269,7 +270,8 @@ function borraEq(id){
 function corteData(){
   const q = curQ, prov = curProv, ds = rango(q.desde,q.hasta);
   const filas = S.equipos.filter(e => (!prov || e.proveedor===prov) && ds.some(f => enObra(e,f))).map(e => ({e, r:calc(e,q.desde,q.hasta)}));
-  return {q, prov, ds, filas, total:filas.reduce((a,x) => a+x.r.valor, 0), pend:filas.reduce((a,x) => a+x.r.X, 0)};
+  const sub = filas.reduce((a,x) => a+x.r.valor, 0), pct = ivaPct(), iva = Math.round(sub*pct/100);
+  return {q, prov, ds, filas, sub, pct, iva, total:sub+iva, pend:filas.reduce((a,x) => a+x.r.X, 0)};
 }
 function vCorte(){
   const opts = []; let q = quincena(hoy());
@@ -284,7 +286,9 @@ function vCorte(){
   <div class="card"><div class="mu">Periodo ${fmtD(d.q.desde)} al ${fmtD(d.q.hasta)}${d.prov?' · '+esc(d.prov):''}</div>
   <table><thead><tr><th>Equipo</th><th>T</th><th>S</th><th>V</th><th>Cobro</th><th>Valor</th></tr></thead><tbody>
   ${d.filas.map(x => `<tr><td><b>${esc(x.e.codigo||'')}</b> ${esc(x.e.nombre)}${num(x.e.unds)>1?' ×'+x.e.unds:''}<br><span class="mu">${money(x.e.tarifa)} ${UNI[x.e.unidad].toLowerCase()}</span></td><td>${x.r.T}</td><td>${x.r.S}</td><td>${x.r.V}</td><td>${fmtN(x.r.cant)} ${x.r.u}</td><td><b>${money(x.r.valor)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="mu">Sin equipos en este periodo.</td></tr>'}
-  </tbody><tfoot><tr><td colspan="5">TOTAL</td><td>${money(d.total)}</td></tr></tfoot></table></div>
+  </tbody><tfoot><tr><td colspan="5" style="font-weight:400;font-size:13px">Subtotal</td><td style="font-weight:400;font-size:13px">${money(d.sub)}</td></tr>
+  <tr><td colspan="5" style="font-weight:400;font-size:13px">IVA ${fmtN(d.pct)}%</td><td style="font-weight:400;font-size:13px">${money(d.iva)}</td></tr>
+  <tr><td colspan="5">TOTAL</td><td>${money(d.total)}</td></tr></tfoot></table></div>
   ${d.filas.length ? `<div class="card mx"><div class="mu" style="margin-bottom:6px">Detalle día a día</div><table><thead><tr><th>Equipo</th>${d.ds.map(f => `<th>${+f.slice(8)}</th>`).join('')}</tr></thead><tbody>
   ${d.filas.map(x => `<tr><td>${esc(x.e.codigo||x.e.nombre)}</td>${d.ds.map(f => { const s = x.r.det[f]; return `<td>${s && s!=='·' ? `<span class="lt ${s}">${s==='X'?'?':s}</span>` : '<span class="mu">'+(s||'–')+'</span>'}</td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div>` : ''}
@@ -305,7 +309,7 @@ function textoCorte(d){
     L.push('   Trabajó '+r.T+' · Standby '+r.S+' · Varado '+r.V+' · No laboró '+r.N+(r.X?' · Sin registro '+r.X:'')+(r.hT?' · '+fmtN(r.hT)+' h':''));
     L.push('   '+fmtN(r.cant)+' '+r.u+' × '+money(e.tarifa)+(e.unidad==='mes'?'/mes':'')+' = '+money(r.valor));
   });
-  L.push('', '*TOTAL: '+money(d.total)+'*');
+  L.push('', 'Subtotal: '+money(d.sub), 'IVA '+fmtN(d.pct)+'%: '+money(d.iva), '*TOTAL: '+money(d.total)+'*');
   if(d.pend) L.push('_Nota: '+d.pend+' día(s)-equipo sin registrar._');
   if(S.cfg.resp) L.push('Responsable: '+S.cfg.resp);
   return L.join('\n');
@@ -327,7 +331,7 @@ function loadImg(src){ return new Promise(r => { const i = new Image(); i.onload
 async function compartirImg(){
   const d = corteData(); if(!d.filas.length){ toast('No hay equipos en el corte'); return; }
   const W = 1080, P = 48, rh = 74, mh = 40, nd = d.ds.length;
-  const H = 300 + d.filas.length*rh + 110 + 90 + d.filas.length*mh + 120;
+  const H = 300 + d.filas.length*rh + 110 + 90 + 80 + d.filas.length*mh + 120;
   const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
   x.fillStyle = '#fff'; x.fillRect(0,0,W,H);
   const lg = await loadImg('logo.jpg'); if(lg) x.drawImage(lg, P, 40, 60*lg.width/lg.height, 60);
@@ -348,6 +352,9 @@ async function compartirImg(){
     T(fmtN(f.r.cant)+' '+f.r.u,850,y+44,22,'#1b2333','400','right'); T(money(f.r.valor),W-P-14,y+44,24,'#14213d','700','right');
     y += rh;
   });
+  T('Subtotal',P+14,y+40,24,'#6b7385'); T(money(d.sub),W-P-14,y+40,24,'#1b2333','600','right');
+  T('IVA '+fmtN(d.pct)+'%',P+14,y+78,24,'#6b7385'); T(money(d.iva),W-P-14,y+78,24,'#1b2333','600','right');
+  y += 80;
   x.fillStyle = '#fff1e6'; x.fillRect(P,y+10,W-2*P,70);
   T('TOTAL',P+14,y+56,30,'#14213d','700'); T(money(d.total),W-P-14,y+56,34,'#f06b0c','800','right');
   y += 140; T('Detalle día a día',P,y,24,'#14213d','700'); y += 20;
@@ -379,6 +386,7 @@ function vMas(){
   <label>Nombre de la obra</label><input id="c_obra" value="${esc(S.cfg.obra)}" placeholder="Nueva Sede Clínica ISIS">
   <label>Responsable del registro</label><input id="c_resp" value="${esc(S.cfg.resp)}">
   <label>WhatsApp por defecto para el corte (opcional)</label><input id="c_whats" inputmode="tel" value="${esc(S.cfg.whats)}" placeholder="Si se deja vacío, WhatsApp pregunta a quién enviar">
+  <label>IVA sobre el alquiler (%)</label><input id="c_iva" inputmode="decimal" value="${esc(ivaPct())}">
   <br><br><button class="btn na full" onclick="guardaCfg()">Guardar</button></div>
   <h3>Historial de cortes</h3>
   ${S.cortes.map(c => `<div class="card eq"><div><div class="n">${qLabel(c)}${c.prov?' · '+esc(c.prov):''}</div><div class="mu">Guardado ${fmtD(c.fecha)} · ${money(c.total)}</div></div>
@@ -394,7 +402,7 @@ function vMas(){
   <div class="row"><button class="btn gh" onclick="ejemplo()">Datos de ejemplo</button><button class="btn rd" onclick="borrarTodo()">Borrar todo</button></div>
   <p class="mu" style="text-align:center">Soteco SAS · Equipos en alquiler v1</p>`);
 }
-function guardaCfg(){ ['obra','resp','whats'].forEach(k => S.cfg[k] = document.getElementById('c_'+k).value.trim()); save(); render(); toast('Configuración guardada'); }
+function guardaCfg(){ ['obra','resp','whats'].forEach(k => S.cfg[k] = document.getElementById('c_'+k).value.trim()); S.cfg.iva = num(document.getElementById('c_iva').value); save(); render(); toast('Configuración guardada'); }
 function reenviar(id){ const c = S.cortes.find(x => x.id===id); const pv = c.prov && S.equipos.find(e => e.proveedor===c.prov && e.tel); window.open('https://wa.me/'+telWA(pv?pv.tel:S.cfg.whats)+'?text='+encodeURIComponent(c.texto), '_blank'); }
 function verCorte(id){ const c = S.cortes.find(x => x.id===id); curQ = {desde:c.desde, hasta:c.hasta}; curProv = c.prov||''; go('corte'); }
 function descargar(nombre, contenido, tipo){
