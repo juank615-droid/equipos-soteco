@@ -535,7 +535,9 @@ function vMas(){
   <h3>Respaldo de datos</h3><div class="card">
   <p class="mu" style="margin-top:0">Los datos viven solo en este teléfono. Haga un respaldo cada quincena y guárdelo en Drive o WhatsApp.</p>
   <div class="row"><button class="btn gh" onclick="exportar()">⬇️ Respaldo</button><button class="btn gh" onclick="document.getElementById('imp').click()">⬆️ Restaurar</button></div>
-  <input type="file" id="imp" accept=".json,application/json" style="display:none" onchange="importar(this)"><br>
+  <input type="file" id="imp" style="display:none" onchange="importar(this)">
+  <div class="row" style="margin-top:8px"><button class="btn gh" onclick="copiarTexto()">📋 Copiar como texto</button><button class="btn gh" onclick="pegarTexto()">📥 Pegar texto</button></div>
+  <p class="mu">Para pasar los datos a otro celular: <b>Copiar como texto</b>, envíelo por WhatsApp, cópielo en el otro celular y use <b>Pegar texto</b>.</p>
   <button class="btn gh full" onclick="exportCSV()">📊 Exportar registros a Excel (CSV)</button></div>
   <h3>Instalar en el celular</h3><div class="card mu">
   <b>iPhone:</b> abrir el enlace en Safari → botón Compartir → “Agregar a pantalla de inicio”.<br>
@@ -552,10 +554,31 @@ function descargar(nombre, contenido, tipo){
   const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = nombre; a.click();
 }
 function exportar(){ descargar('Respaldo_equipos_soteco_'+hoy()+'.json', JSON.stringify(S), 'application/json'); }
+function restaurar(txt){
+  let s;
+  try{ txt = String(txt||'').trim(); const a = txt.indexOf('{'), b = txt.lastIndexOf('}'); s = JSON.parse(txt.slice(a, b+1)); if(!s || !Array.isArray(s.equipos)) throw 0; }
+  catch(e){ alert('El contenido no es un respaldo válido de la app.'); return false; }
+  const nd = Object.keys(s.reg||{}).length;
+  if(!confirm('Respaldo con '+s.equipos.length+' equipo(s) y '+nd+' día(s) registrados.\n¿Reemplazar los datos de este celular?')) return false;
+  S = s; S.cfg = S.cfg||{obra:'',resp:'',whats:''}; S.cortes = S.cortes||[]; S.reg = S.reg||{};
+  save(); closeM(); go('inicio'); toast('✅ Restaurado: '+S.equipos.length+' equipo(s)'); return true;
+}
 function importar(inp){
   const f = inp.files[0]; if(!f) return; const rd = new FileReader();
-  rd.onload = () => { try{ const s = JSON.parse(rd.result); if(!s.equipos) throw 0; if(!confirm('¿Reemplazar los datos actuales por el respaldo?')) return; S = s; S.cortes = S.cortes||[]; S.reg = S.reg||{}; save(); render(); toast('Respaldo restaurado'); }catch(e){ toast('Archivo no válido'); } };
+  rd.onload = () => restaurar(rd.result);
+  rd.onerror = () => alert('No se pudo leer el archivo.');
   rd.readAsText(f); inp.value = '';
+}
+async function copiarTexto(){
+  const t = 'RESPALDO EQUIPOS SOTECO '+hoy()+'\n'+JSON.stringify(S);
+  try{ await navigator.clipboard.writeText(t); toast('📋 Copiado. Péguelo en WhatsApp'); }
+  catch(e){ openM('<div class="hd"><h2 style="margin:0">Copiar respaldo</h2><button class="x" onclick="closeM()">✕</button></div><p class="mu">Seleccione todo el texto y cópielo.</p><textarea rows="10" onfocus="this.select()">'+esc(t)+'</textarea>'); }
+}
+function pegarTexto(){
+  openM(`<div class="hd"><h2 style="margin:0">Pegar respaldo</h2><button class="x" onclick="closeM()">✕</button></div>
+  <p class="mu">Copie el mensaje del respaldo desde WhatsApp (mantener presionado → Copiar) y péguelo aquí.</p>
+  <textarea id="txtRes" rows="9" placeholder="Pegue aquí el texto del respaldo"></textarea><br><br>
+  <button class="btn na full" onclick="restaurar(document.getElementById('txtRes').value)">Restaurar</button>`);
 }
 function exportCSV(){
   const L = [['Fecha','Codigo','Equipo','Proveedor','Estado','Horas','Observacion'].join(';')];
